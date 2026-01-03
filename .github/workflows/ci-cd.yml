@@ -1,81 +1,195 @@
 name: fullstack-3tier-node-app-deployment
 
+env:
+  IMAGE_TAG: ${{ github.ref_name }}-${{ github.run_number }}
+
 on:
-    push:
-        branches: ["main"]
+  push:
+    branches: ["main"]
 
 jobs:
-    compile:
-        runs-on: ubuntu-latest
-        steps:
-            - name: code-checkout
-              uses: actions/checkout@v4
-            
-            - name: setup-nodejs
-              uses: actions/setup-node@v4
-              with:
-                node-version: 23
-            
-            - name: frontend-compile (syntax-check)
-              run: |
-                cd client
-                find . -name "*.js" -exec node --check {} +
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: code-checkout
+        uses: actions/checkout@v4
 
-            - name: backendend-compile (syntax-check)
-              run: |
-                cd api
-                find . -name "*.js" -exec node --check {} +
-    
-    gitleaks:
-        runs-on: ubuntu-latest
-        needs: compile
-        steps:
-            - name: checkout-code
-              uses: actions/checkout@v4
+      - name: setup-nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23
 
-            - name: setup-gitleaks
-              uses: gitleaks/gitleaks-action@v2
+      - name: frontend-compile (syntax-check)
+        run: |
+          cd client
+          find . -name "*.js" -exec node --check {} +
 
-            - name: gitleaks-scan
-              run: |
-                gitleaks detect --source ./client --exit-code 1
-                gitleaks detect --source ./api --exit-code 1
-                
-    trivy_fs_scan:
-        runs-on: ubuntu-latest
-        needs: gitleaks
-        steps:
-            - name: checkout-code
-              uses: actions/checkout@v4
+      - name: backend-compile (syntax-check)
+        run: |
+          cd api
+          find . -name "*.js" -exec node --check {} +
 
-            - name: run-trivy-vulnerability scanner
-              uses: aquasecurity/trivy-action@0.28.0
-              with:
-                scan-type: 'fs'
-                scan-ref: '.'
-                format: 'table'
-                ignore-unfixed: true
-                vuln-type: 'os,library'
-                severity: 'CRITICAL,HIGH'
+  gitleaks:
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - name: checkout-code
+        uses: actions/checkout@v4
 
-    sonarqube_frontend_scan:
-        runs-on: ubuntu-latest
-        needs: trivy_fs_scan
-        steps:
-            - name: checkout-code
-              uses: actions/checkout@v4
-            
-            - name: sonarqube-scan-client
-              uses: sonarsource/sonarqube-scan-action@master
-              with:
-                projectBaseDir: client        
-                args: >
-                  -Dsonar.projectKey=myorg_client
-                  -Dsonar.projectName=myorg_client
-                  -Dsonar.sources=.
-                  -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
-              env:
-                SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-                SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: setup-gitleaks
+        uses: gitleaks/gitleaks-action@v2
 
-              
+      - name: gitleaks-scan
+        run: |
+          gitleaks detect --source ./client --exit-code 1
+          gitleaks detect --source ./api --exit-code 1
+
+  trivy_fs_scan:
+    runs-on: ubuntu-latest
+    needs: gitleaks
+    steps:
+      - name: checkout-code
+        uses: actions/checkout@v4
+
+      - name: run-trivy-vulnerability-scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+  sonarqube_frontend_scan:
+    runs-on: ubuntu-latest
+    needs: trivy_fs_scan
+    steps:
+      - name: checkout-code
+        uses: actions/checkout@v4
+
+      - name: sonarqube-scan-client
+        uses: sonarsource/sonarqube-scan-action@master
+        with:
+          projectBaseDir: client
+          args: >
+            -Dsonar.projectKey=myorg_client
+            -Dsonar.projectName=myorg_client
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  sonarqube_backend_scan:
+    runs-on: ubuntu-latest
+    needs: sonarqube_frontend_scan
+    steps:
+      - name: checkout-code
+        uses: actions/checkout@v4
+
+      - name: sonarqube-scan-api
+        uses: sonarsource/sonarqube-scan-action@master
+        with:
+          projectBaseDir: api
+          args: >
+            -Dsonar.projectKey=myorg_api
+            -Dsonar.projectName=myorg_api
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  build_backend_docker_image_and_push:
+    runs-on: ubuntu-latest
+    needs:
+      - sonarqube_frontend_scan
+      - sonarqube_backend_scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          file: ./api/Dockerfile
+          push: true
+          tags: |
+            jayyy48/backend:latest
+            jayyy48/backend:${{ env.IMAGE_TAG }}
+
+  build_frontend_docker_image_and_push:
+    runs-on: ubuntu-latest
+    needs:
+      - sonarqube_frontend_scan
+      - sonarqube_backend_scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push frontend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: true
+          tags: |
+            jayyy48/frontend:latest
+            jayyy48/frontend:${{ env.IMAGE_TAG }}
+
+  trivy_image_scan:
+    runs-on: ubuntu-latest
+    needs:
+      - build_backend_docker_image_and_push
+      - build_frontend_docker_image_and_push
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy image scan for backend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: adijaiswal/backend:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Run Trivy image scan for frontend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: adijaiswal/frontend:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
