@@ -176,7 +176,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: image
-          image-ref: adijaiswal/backend:${{ env.IMAGE_TAG }}
+          image-ref: jayyy48/backend:${{ env.IMAGE_TAG }}
           format: table
           exit-code: "0"
           ignore-unfixed: true
@@ -187,7 +187,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: image
-          image-ref: adijaiswal/frontend:${{ env.IMAGE_TAG }}
+          image-ref: jayyy48/frontend:${{ env.IMAGE_TAG }}
           format: table
           exit-code: "0"
           ignore-unfixed: true
