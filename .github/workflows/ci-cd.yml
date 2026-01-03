@@ -63,7 +63,7 @@ jobs:
         needs: trivy_fs_scan
         steps:
             - name: checkout-code
-              uses: actions/chechkout@v4
+              uses: actions/checkout@v4
             
             - name: sonarqube-scan-client
               uses: sonarsource/sonarqube-scan-action@master
