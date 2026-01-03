@@ -1,0 +1,61 @@
+name: fullstack-3tier-node-app-deployment
+
+on:
+    push:
+        branches: ["main"]
+
+jobs:
+    compile:
+        runs-on: ubuntu-latest
+        steps:
+            - name: code-checkout
+              uses: actions/checkout@v4
+            
+            - name: setup-nodejs
+              uses: actions/setup-node@v4
+              with:
+                node-version: 23
+            
+            - name: frontend-compile (syntax-check)
+              run: |
+                cd client
+                find . -name "*.js" -exec node --check {} +
+
+            - name: backendend-compile (syntax-check)
+              run: |
+                cd api
+                find . -name "*.js" -exec node --check {} +
+    
+    gitleaks:
+        runs-on: ubuntu-latest
+        needs: compile
+        steps:
+            - name: checkout-code
+              uses: actions/checkout@v4
+
+            - name: setup-gitleaks
+              uses: gitleaks/gitleaks-action@v2
+
+            - name: gitleaks-scan
+              run: |
+                gitleaks detect --source ./client --exit-code 1
+                gitleaks detect --source ./api --exit-code 1
+                
+    trivy_fs_can:
+        runs-on: ubuntu-latest
+        needs: gitleaks
+        steps:
+            - name: checkout-code
+              uses: actions/checkout@v4
+
+            - name: run-trivy-vulnerability scanner
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                scan-type: 'fs'
+                scan-ref: '.'
+                format: 'table'
+                ignore-unfixed: true
+                vuln-type: 'os,library'
+                severity: 'CRITICAL,HIGH'
+
+              
