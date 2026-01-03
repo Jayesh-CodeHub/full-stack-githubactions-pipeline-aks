@@ -41,7 +41,7 @@ jobs:
                 gitleaks detect --source ./client --exit-code 1
                 gitleaks detect --source ./api --exit-code 1
                 
-    trivy_fs_can:
+    trivy_fs_scan:
         runs-on: ubuntu-latest
         needs: gitleaks
         steps:
@@ -57,5 +57,25 @@ jobs:
                 ignore-unfixed: true
                 vuln-type: 'os,library'
                 severity: 'CRITICAL,HIGH'
+
+    sonarqube_frontend_scan:
+        runs-on: ubuntu-latest
+        needs: trivy_fs_scan
+        steps:
+            - name: checkout-code
+              uses: actions/chechkout@v4
+            
+            - name: sonarqube-scan-client
+              uses: sonarsource/sonarqube-scan-action@master
+              with:
+                projectBaseDir: client        
+                args: >
+                  -Dsonar.projectKey=myorg_client
+                  -Dsonar.projectName=myorg_client
+                  -Dsonar.sources=.
+                  -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
+              env:
+                SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+                SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
               
