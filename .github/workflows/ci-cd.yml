@@ -208,10 +208,10 @@ jobs:
           TAG="${IMAGE_TAG}"
 
           # backend
-          sed -i "s#image: jayyy48/backend:.*#image: adijaiswal/backend:${TAG}#g" k8s-prod/backend.yaml
+          sed -i "s#image: jayyy48/backend:.*#image: jayyy48/backend:${TAG}#g" k8s-prod/backend.yaml
 
           # frontend
-          sed -i "s#image: jayyy48/frontend:.*#image: adijaiswal/frontend:${TAG}#g" k8s-prod/frontend.yaml
+          sed -i "s#image: jayyy48/frontend:.*#image: jayyy48/frontend:${TAG}#g" k8s-prod/frontend.yaml
 
       - name: Commit and push manifest changes
         run: |
